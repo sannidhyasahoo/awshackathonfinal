@@ -1,0 +1,200 @@
+{
+  "agentName": "ResponseOrchestrationAgent",
+  "description": "Automated incident response with context-aware authorization and human-in-the-loop controls",
+  "foundationModel": "anthropic.claude-3-5-haiku-20241022-v1:0",
+  "instruction": "You are an incident response coordinator specializing in automated security response actions. Your role is to execute appropriate containment and response measures based on threat severity and business impact.\n\nYour response framework:\n\n**CRITICAL Threats (Immediate Action)**:\n- Isolate affected resources immediately\n- Revoke compromised credentials\n- Create forensic snapshots\n- Alert emergency response team (PagerDuty)\n- Initiate emergency communication protocols\n\n**HIGH Threats (Rapid Response)**:\n- Prepare isolation procedures (but request approval for production)\n- Create forensic snapshots\n- Alert security team (Slack)\n- Initiate investigation workflow\n- Monitor for escalation\n\n**MEDIUM/LOW Threats (Controlled Response)**:\n- Queue for analyst review\n- Create incident tickets\n- Implement monitoring enhancements\n- Document for trend analysis\n\n**Authorization Matrix**:\n- Development/Test: Full automation allowed\n- Production: Require human approval for disruptive actions\n- Critical Business Hours: Escalate to on-call manager\n- Emergency Override: Available for CRITICAL threats with full audit trail\n\nAlways consider business impact, provide clear justification for actions, and maintain comprehensive audit trails.",
+  "idleSessionTTLInSeconds": 900,
+  "actionGroups": [
+    {
+      "actionGroupName": "ContainmentTools",
+      "description": "Tools for isolating and containing security threats",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:response-containment-tools"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "isolate_instance",
+            "description": "Isolate EC2 instance by modifying security groups to deny all traffic",
+            "parameters": {
+              "instance_id": {
+                "type": "string",
+                "description": "EC2 instance ID to isolate"
+              },
+              "isolation_type": {
+                "type": "string",
+                "description": "Type: complete, partial, forensic_preserve"
+              },
+              "require_approval": {
+                "type": "boolean",
+                "description": "Whether human approval is required"
+              }
+            }
+          },
+          {
+            "name": "snapshot_for_forensics",
+            "description": "Create EBS snapshots for forensic analysis",
+            "parameters": {
+              "instance_id": {
+                "type": "string",
+                "description": "Instance ID to snapshot"
+              },
+              "snapshot_description": {
+                "type": "string",
+                "description": "Description for forensic context"
+              }
+            }
+          },
+          {
+            "name": "revoke_credentials",
+            "description": "Revoke IAM credentials and terminate active sessions",
+            "parameters": {
+              "principal_arn": {
+                "type": "string",
+                "description": "IAM user or role ARN to revoke"
+              },
+              "revocation_scope": {
+                "type": "string",
+                "description": "Scope: sessions_only, credentials_only, complete"
+              }
+            }
+          },
+          {
+            "name": "block_ip_at_waf",
+            "description": "Add IP addresses to WAF block list",
+            "parameters": {
+              "ip_addresses": {
+                "type": "array",
+                "description": "List of IP addresses to block"
+              },
+              "block_duration_hours": {
+                "type": "integer",
+                "description": "Duration to maintain block (default: 24)"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "actionGroupName": "NotificationTools",
+      "description": "Tools for alerting and communication during incidents",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:response-notification-tools"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "notify_team",
+            "description": "Send notifications to security team via multiple channels",
+            "parameters": {
+              "severity": {
+                "type": "string",
+                "description": "Severity level: CRITICAL, HIGH, MEDIUM, LOW"
+              },
+              "message": {
+                "type": "string",
+                "description": "Notification message content"
+              },
+              "channels": {
+                "type": "array",
+                "description": "Channels: slack, pagerduty, email, sms"
+              },
+              "escalation_required": {
+                "type": "boolean",
+                "description": "Whether to escalate to management"
+              }
+            }
+          },
+          {
+            "name": "create_incident_ticket",
+            "description": "Create incident tracking ticket in JIRA",
+            "parameters": {
+              "incident_summary": {
+                "type": "string",
+                "description": "Brief incident description"
+              },
+              "severity": {
+                "type": "string",
+                "description": "Incident severity level"
+              },
+              "affected_systems": {
+                "type": "array",
+                "description": "List of affected systems and resources"
+              },
+              "initial_response_actions": {
+                "type": "array",
+                "description": "Actions taken during initial response"
+              }
+            }
+          },
+          {
+            "name": "request_approval",
+            "description": "Request human approval for response actions",
+            "parameters": {
+              "action_description": {
+                "type": "string",
+                "description": "Description of proposed action"
+              },
+              "business_impact": {
+                "type": "string",
+                "description": "Expected business impact"
+              },
+              "urgency": {
+                "type": "string",
+                "description": "Urgency level: immediate, urgent, normal"
+              },
+              "approver_role": {
+                "type": "string",
+                "description": "Required approver: security_lead, manager, emergency_contact"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "knowledgeBaseId": "INCIDENT_RESPONSE_KB",
+      "description": "Incident response playbooks and procedures",
+      "knowledgeBaseState": "ENABLED"
+    }
+  ],
+  "promptOverrideConfiguration": {
+    "promptConfigurations": [
+      {
+        "promptType": "PRE_PROCESSING",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "You are coordinating incident response. Before taking action, assess:\n1. Threat severity and confirmed impact\n2. Business criticality of affected systems\n3. Current time and business hours\n4. Required approval levels for proposed actions\n5. Potential business disruption from response actions\n\nPlan your response strategy considering both security needs and business continuity.",
+        "inferenceConfiguration": {
+          "temperature": 0.1,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 1024,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      },
+      {
+        "promptType": "ORCHESTRATION",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "Execute incident response following this structure:\n\n**RESPONSE ASSESSMENT**\n- Threat Level: [CRITICAL/HIGH/MEDIUM/LOW]\n- Business Impact: [assessment of affected systems]\n- Response Urgency: [immediate/urgent/normal]\n- Authorization Required: [yes/no and level]\n\n**PROPOSED ACTIONS**\n[List specific response actions with justification]\n\n**CONTAINMENT PLAN**\n- Immediate Actions: [actions to take now]\n- Pending Approval: [actions requiring authorization]\n- Monitoring: [enhanced monitoring to implement]\n\n**COMMUNICATION PLAN**\n- Internal Notifications: [who to notify and how]\n- External Communications: [customer/partner notifications if needed]\n- Escalation Path: [when and how to escalate]\n\n**BUSINESS CONTINUITY**\n- Impact Mitigation: [steps to minimize business disruption]\n- Recovery Planning: [preliminary recovery considerations]\n\n**AUDIT TRAIL**\n[Document all actions taken with timestamps and justification]\n\nExecute approved actions using your tools and maintain detailed logs.",
+        "inferenceConfiguration": {
+          "temperature": 0.2,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 4096,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      }
+    ]
+  },
+  "tags": {
+    "Environment": "production",
+    "Service": "ai-agent-service",
+    "Agent": "response-orchestration",
+    "CostCenter": "security-operations"
+  }
+}

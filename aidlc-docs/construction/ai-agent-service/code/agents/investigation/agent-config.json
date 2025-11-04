@@ -1,0 +1,197 @@
+{
+  "agentName": "InvestigationAgent",
+  "description": "Deep threat investigation with adaptive analysis depth and evidence collection",
+  "foundationModel": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "instruction": "You are a senior cybersecurity investigator specializing in deep threat analysis and digital forensics. Your role is to conduct thorough investigations of confirmed security threats to understand attack vectors, scope, and impact.\n\nYour investigation must include:\n1. **Attack Timeline**: Chronological sequence of events and activities\n2. **Entry Vector Analysis**: How the attacker gained initial access\n3. **Lateral Movement Mapping**: Spread of compromise across systems\n4. **Data Risk Assessment**: What data may have been accessed or exfiltrated\n5. **Persistence Mechanisms**: How the attacker maintains access\n6. **Evidence Collection**: Gather and preserve digital evidence\n7. **Impact Assessment**: Business and technical impact evaluation\n\nInvestigation depth should be adaptive based on:\n- Threat severity (CRITICAL/HIGH get comprehensive analysis)\n- Available time and resources\n- Initial findings that suggest broader compromise\n- Business criticality of affected systems\n\nUse your tools strategically to build a complete picture. Prioritize high-value evidence and focus on actionable intelligence. Document your methodology and findings clearly for potential legal proceedings.",
+  "idleSessionTTLInSeconds": 3600,
+  "actionGroups": [
+    {
+      "actionGroupName": "ForensicTools",
+      "description": "Tools for digital forensics and evidence collection",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:investigation-forensic-tools"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "query_cloudtrail_detailed",
+            "description": "Detailed CloudTrail analysis for specific resources and timeframes",
+            "parameters": {
+              "resource_identifier": {
+                "type": "string",
+                "description": "Resource, user, or role to investigate"
+              },
+              "start_time": {
+                "type": "string",
+                "description": "Investigation start time (ISO 8601)"
+              },
+              "end_time": {
+                "type": "string",
+                "description": "Investigation end time (ISO 8601)"
+              },
+              "event_categories": {
+                "type": "array",
+                "description": "Categories: authentication, authorization, data_access, configuration_change"
+              }
+            }
+          },
+          {
+            "name": "query_flow_logs_history",
+            "description": "Historical network flow analysis for IP addresses and patterns",
+            "parameters": {
+              "ip_address": {
+                "type": "string",
+                "description": "IP address to investigate"
+              },
+              "hours_back": {
+                "type": "integer",
+                "description": "Hours of historical data to analyze"
+              },
+              "connection_types": {
+                "type": "array",
+                "description": "Types: inbound, outbound, internal, external"
+              }
+            }
+          },
+          {
+            "name": "get_iam_permissions",
+            "description": "Analyze IAM permissions and potential privilege escalation paths",
+            "parameters": {
+              "principal_arn": {
+                "type": "string",
+                "description": "IAM user, role, or group ARN to analyze"
+              },
+              "include_effective_permissions": {
+                "type": "boolean",
+                "description": "Include effective permissions from groups and policies"
+              }
+            }
+          },
+          {
+            "name": "check_vulnerabilities",
+            "description": "Check for known vulnerabilities and security issues",
+            "parameters": {
+              "instance_id": {
+                "type": "string",
+                "description": "EC2 instance ID to check"
+              },
+              "vulnerability_types": {
+                "type": "array",
+                "description": "Types: cve, configuration, compliance, patch_status"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "actionGroupName": "CorrelationTools",
+      "description": "Tools for correlating findings across multiple data sources",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:investigation-correlation-tools"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "query_guardduty_findings",
+            "description": "Get correlated GuardDuty findings for resources and timeframes",
+            "parameters": {
+              "resource_id": {
+                "type": "string",
+                "description": "Resource identifier to correlate"
+              },
+              "finding_types": {
+                "type": "array",
+                "description": "GuardDuty finding types to include"
+              },
+              "severity_threshold": {
+                "type": "string",
+                "description": "Minimum severity: LOW, MEDIUM, HIGH"
+              }
+            }
+          },
+          {
+            "name": "get_network_topology",
+            "description": "Analyze network topology and potential lateral movement paths",
+            "parameters": {
+              "vpc_id": {
+                "type": "string",
+                "description": "VPC ID to analyze"
+              },
+              "source_resource": {
+                "type": "string",
+                "description": "Starting point for lateral movement analysis"
+              }
+            }
+          },
+          {
+            "name": "correlate_timeline_events",
+            "description": "Correlate events across multiple data sources to build timeline",
+            "parameters": {
+              "event_sources": {
+                "type": "array",
+                "description": "Sources: cloudtrail, flow_logs, guardduty, config"
+              },
+              "time_window": {
+                "type": "object",
+                "description": "Start and end times for correlation"
+              },
+              "correlation_keys": {
+                "type": "array",
+                "description": "Keys to correlate on: ip, user, resource, session"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "knowledgeBaseId": "THREAT_INTELLIGENCE_KB",
+      "description": "MITRE ATT&CK framework, threat patterns, and historical incident data",
+      "knowledgeBaseState": "ENABLED"
+    },
+    {
+      "knowledgeBaseId": "FORENSIC_PLAYBOOKS_KB",
+      "description": "Investigation playbooks and forensic procedures",
+      "knowledgeBaseState": "ENABLED"
+    }
+  ],
+  "promptOverrideConfiguration": {
+    "promptConfigurations": [
+      {
+        "promptType": "PRE_PROCESSING",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "You are beginning a cybersecurity investigation. Start by understanding the scope and gathering initial evidence. Consider:\n1. What is the confirmed threat and its initial indicators?\n2. What systems and data might be affected?\n3. What evidence sources are available?\n4. What is the appropriate investigation depth for this threat level?\n\nPlan your investigation approach before diving into detailed analysis.",
+        "inferenceConfiguration": {
+          "temperature": 0.1,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 2048,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      },
+      {
+        "promptType": "ORCHESTRATION",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "Conduct a thorough investigation and provide a comprehensive report. Use this structure:\n\n**EXECUTIVE SUMMARY**\n- Threat Overview: [brief description]\n- Impact Assessment: [business and technical impact]\n- Key Findings: [most critical discoveries]\n\n**ATTACK TIMELINE**\n[Chronological sequence of events with timestamps]\n\n**TECHNICAL ANALYSIS**\n- Entry Vector: [how access was gained]\n- Lateral Movement: [spread of compromise]\n- Persistence: [how access is maintained]\n- Data at Risk: [affected data and systems]\n\n**EVIDENCE COLLECTED**\n[List of evidence with sources and relevance]\n\n**CORRELATION ANALYSIS**\n[Connections to other incidents or patterns]\n\n**INVESTIGATION METHODOLOGY**\n[Tools used and analysis approach]\n\n**RECOMMENDATIONS**\n- Immediate Actions: [urgent containment steps]\n- Investigation Continuation: [additional analysis needed]\n- Long-term Improvements: [preventive measures]\n\nBase your analysis on evidence gathered through your tools and forensic best practices.",
+        "inferenceConfiguration": {
+          "temperature": 0.2,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 8192,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      }
+    ]
+  },
+  "tags": {
+    "Environment": "production",
+    "Service": "ai-agent-service",
+    "Agent": "investigation",
+    "CostCenter": "security-operations"
+  }
+}

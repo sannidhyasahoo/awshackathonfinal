@@ -1,0 +1,144 @@
+{
+  "agentName": "ThreatClassifierAgent",
+  "description": "AI-powered threat classification with severity assessment and MITRE ATT&CK mapping",
+  "foundationModel": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "instruction": "You are an expert cybersecurity analyst specializing in network threat classification. Your role is to analyze network anomalies detected in VPC Flow Logs and provide accurate threat assessments.\n\nYour analysis must include:\n1. **Threat Determination**: Is this a genuine security threat or benign activity?\n2. **Severity Assessment**: CRITICAL/HIGH/MEDIUM/LOW based on potential impact\n3. **Confidence Score**: 0-100 representing your certainty in the assessment\n4. **Threat Type**: Specific category (port_scan, ddos, c2_beacon, crypto_mining, tor_usage, etc.)\n5. **MITRE ATT&CK Mapping**: Relevant techniques and tactics\n6. **Reasoning**: Clear explanation of your analysis\n7. **Recommended Actions**: Specific next steps\n\nConsider these factors:\n- Is this behavior expected for the resource type and environment?\n- Are there legitimate business explanations for this activity?\n- What is the potential blast radius and impact?\n- Does this correlate with known threat patterns?\n\nUse your tools to gather additional context before making final determinations. Be thorough but efficient to meet response time requirements.",
+  "idleSessionTTLInSeconds": 1800,
+  "actionGroups": [
+    {
+      "actionGroupName": "DataAccessTools",
+      "description": "Tools for accessing threat data, baselines, and historical information",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:threat-classifier-data-access"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "get_resource_baseline",
+            "description": "Get baseline behavior patterns for a specific resource",
+            "parameters": {
+              "resource_id": {
+                "type": "string",
+                "description": "EC2 instance ID, IP address, or resource identifier"
+              },
+              "timeframe_hours": {
+                "type": "integer",
+                "description": "Hours of historical data to analyze (default: 168)"
+              }
+            }
+          },
+          {
+            "name": "check_threat_intel",
+            "description": "Check IP addresses, domains, or indicators against threat intelligence feeds",
+            "parameters": {
+              "indicators": {
+                "type": "array",
+                "description": "List of IPs, domains, or other indicators to check"
+              },
+              "indicator_type": {
+                "type": "string",
+                "description": "Type of indicator: ip, domain, hash, etc."
+              }
+            }
+          },
+          {
+            "name": "get_recent_cloudtrail",
+            "description": "Get recent CloudTrail API activity for a resource or user",
+            "parameters": {
+              "resource_name": {
+                "type": "string",
+                "description": "Resource name, user, or role to investigate"
+              },
+              "hours_back": {
+                "type": "integer",
+                "description": "Hours of CloudTrail data to retrieve (default: 24)"
+              },
+              "event_types": {
+                "type": "array",
+                "description": "Specific event types to filter (optional)"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "actionGroupName": "ContextTools",
+      "description": "Tools for managing investigation context and state",
+      "actionGroupExecutor": {
+        "lambda": "arn:aws:lambda:us-east-1:ACCOUNT:function:threat-classifier-context"
+      },
+      "functionSchema": {
+        "functions": [
+          {
+            "name": "get_investigation_context",
+            "description": "Retrieve existing investigation context and related findings",
+            "parameters": {
+              "anomaly_id": {
+                "type": "string",
+                "description": "Anomaly identifier to get context for"
+              }
+            }
+          },
+          {
+            "name": "update_classification_context",
+            "description": "Update classification context with findings and reasoning",
+            "parameters": {
+              "anomaly_id": {
+                "type": "string",
+                "description": "Anomaly identifier"
+              },
+              "classification_data": {
+                "type": "object",
+                "description": "Classification results and reasoning"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "knowledgeBaseId": "THREAT_INTELLIGENCE_KB",
+      "description": "MITRE ATT&CK framework, threat patterns, and historical incident data",
+      "knowledgeBaseState": "ENABLED"
+    }
+  ],
+  "promptOverrideConfiguration": {
+    "promptConfigurations": [
+      {
+        "promptType": "PRE_PROCESSING",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "You are about to analyze a network security anomaly. Before proceeding with classification, gather relevant context using your available tools. Focus on:\n1. Resource baseline behavior patterns\n2. Threat intelligence indicators\n3. Recent API activity that might explain the anomaly\n\nBe systematic but efficient in your data gathering.",
+        "inferenceConfiguration": {
+          "temperature": 0.1,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 2048,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      },
+      {
+        "promptType": "ORCHESTRATION",
+        "promptCreationMode": "OVERRIDDEN",
+        "promptState": "ENABLED",
+        "basePromptTemplate": "Analyze the network anomaly data and provide a structured threat classification. Use the following format:\n\n**THREAT ASSESSMENT**\n- Is Threat: [true/false]\n- Severity: [CRITICAL/HIGH/MEDIUM/LOW]\n- Confidence: [0-100]\n- Threat Type: [specific category]\n\n**MITRE ATT&CK MAPPING**\n- Tactics: [list of tactics]\n- Techniques: [list of technique IDs and names]\n\n**ANALYSIS**\n- Key Indicators: [bullet points]\n- Context Factors: [environmental considerations]\n- Risk Assessment: [potential impact]\n\n**REASONING**\n[Detailed explanation of your analysis]\n\n**RECOMMENDED ACTIONS**\n[Specific next steps]\n\nBase your assessment on the anomaly data, tool results, and your cybersecurity expertise.",
+        "inferenceConfiguration": {
+          "temperature": 0.2,
+          "topP": 0.9,
+          "topK": 250,
+          "maximumLength": 4096,
+          "stopSequences": ["Human:", "Assistant:"]
+        }
+      }
+    ]
+  },
+  "tags": {
+    "Environment": "production",
+    "Service": "ai-agent-service",
+    "Agent": "threat-classifier",
+    "CostCenter": "security-operations"
+  }
+}
